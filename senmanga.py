@@ -13,6 +13,7 @@ import getopt
 import shutil
 from http.cookies import SimpleCookie
 from requests.cookies import cookiejar_from_dict
+from time import sleep
 import subprocess
 
 # ファイルをダウンロードし、zipファイルを作成する作業ディレクトリ
@@ -28,39 +29,115 @@ class SenManga:
     def __init__(self, url):
         # urlが最後/で終わる場合、/を取り除く
         self.__url = re.sub(r'/$', '', url)
-        self.__imageurl = ''
 
-    # 接続、クッキー・ページリストを取得
-    def gethtml(self):
-        self.__req = requests.session()
-        self.__req.headers = {
+    # ダウンロード
+    def download(self):
+        list = re.search(r'https*://[^/]+/([^/]+)/([^/]+)', self.__url)
+        if list is not None:
+            # 「https://raw.senmanga.com/Dragon-Age/2020-07」の形式ならばそのままイメージ取得
+            urls = [list[0]]
+        else:
+            list = re.search(r'https*://[^/]+/([^/]+)', self.__url)
+            if list is not None:
+                # 「https://raw.senmanga.com/Dragon-Age」の形式ならばそのままリストを取得、各リストに対しダウンロードを実行
+                # 「https://raw.senmanga.com/Dragon-Age/2020-07」の形式のリストを取得
+                urls = self.getURLlist(list[0])
+            else:
+                # ダウンロードできるURLでないため終了
+                return
+
+        print(urls)
+
+        for url in urls:
+            # ファイルを展開するパスを作成 (最後に / を含む)
+            list = re.search(r'https*://[^/]+/([^/]+)/([^/]+)', url)
+            title = list.group(1)
+            try:
+                chapter = '%04d' % int(list.group(2))
+            except ValueError:
+                try:
+                    chapter = '%06.1f' % float(list.group(2))
+                except ValueError:
+                    chapter = list.group(2)
+
+            basedir = TMPPATH + title + '/' + chapter
+            try:
+                EXT = '.download'
+                os.makedirs(basedir)
+                if os.path.isdir(basedir + EXT):
+                    shutil.rmtree(basedir + EXT)
+                os.rename(basedir, basedir + EXT)
+                self.gethtml(url, basedir + EXT + '/', chapter)
+                os.rename(basedir + EXT, basedir)
+            except FileExistsError:
+                # すでに存在すれば、処理を行わない。
+                print('すでに存在:', url)
+        return
+
+    def getURLlist(self, url):
+        req = requests.session()
+        req.headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml',
             'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
             'Authority': 'raw.senmanga.com',
-            'Referer': self.__url,
+            'Referer': url,
         }
 
         # HTML情報取得
-        print('url:' + self.__url + '/1')
-        self.__response = self.__req.get(self.__url + '/1')
-        print('status_code:' + str(self.__response.status_code))
-
-        self.__imageurl = self.__url.replace('raw.senmanga.com', 'raw.senmanga.com/viewer') + '/'
+        response = req.get(url)
+        print('url:' + url, 'status_code:' + str(response.status_code))
 
         # 取得HTMLパース
-        self.__index = lxml.etree.HTML(self.__response.text)
+        html = lxml.etree.HTML(response.text)
 
-        # イメージ取得用URL情報取得
-        # /html/body/article/div[1]/div[3]/span/select
-        list = self.__index.xpath('//div[1]/div[3]/span/select[@name="page"]/option')
-        print(len(list))
-        self.__pagesize = len(list)
-        # list = self.__index.xpath('//div[@id="chapter-navigation"]/a/@href')
-        # self.__pagesize = int(re.search(r'/([0-9]*)$', list[1]).group(1))
+        # //*[@id="content"]/div[3]/div[2]/div[2]/div[1]/a
+        list = html.xpath('//*[@id="content"]/div[3]/div[@class="group"]/div[@class="element"]/div[@class="title"]/a/@href')
+
+        return list
+
+    # 接続、クッキー・ページリストを取得
+    def gethtml(self, url, basedir, chapter):
+        req = requests.session()
+        req.headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml',
+            'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+            'Authority': 'raw.senmanga.com',
+            'Referer': url,
+        }
+
+        # HTML情報取得
+        for retry in range(0, 10):
+            try:
+                response = req.get(url + '/1')
+                print('url:' + url + '/1')
+
+                if response.status_code == 200:
+                    # 取得HTMLパース
+                    index = lxml.etree.HTML(response.text)
+
+                    # イメージページ数取得
+                    # /html/body/article/div[1]/div[3]/span/select
+                    pagelist = index.xpath('//div[1]/div[3]/span/select[@name="page"]/option')
+
+                    # イメージダウンロード実行
+                    self.getimage(url, basedir, chapter, len(pagelist))
+
+                    return
+
+                print('url:' + url + '/1', 'status_code:' + str(response.status_code))
+
+            except requests.exceptions.ConnectionError:
+                print('ConnectionError:' + url)
+            except requests.exceptions.Timeout:
+                print('Timeout:' + url)
+
+            # リトライ前に2秒待つ
+            sleep(2)
 
     #
-    def getimage(self):
+    def getimage(self, url, basedir, chapter, pagesize):
         self.__imgreq = requests.session()
         self.__imgreq.headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36',
@@ -68,54 +145,45 @@ class SenManga:
             'Accept-Encoding': 'gzip, deflate, br',
             'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
             'Authority': 'raw.senmanga.com',
-            'Referer': self.__url,
+            'Referer': url,
         }
 
-        # ファイルを展開するパスを作成 (最後に / を含む)
-        basedir = TMPPATH + re.search(r'https*://[^/]+/([^/]+/[^/]+)', self.__url).group(1) + '/'
-
-        try:
-            os.makedirs(basedir)
-        except FileExistsError:
-            pass
-
-        for page in range(1, self.__pagesize + 1):
-            self.downloadImage(basedir, page)
+        for page in range(1, pagesize + 1):
+            self.downloadImage(url, basedir, chapter, page)
 
     # イメージファイルのダウンロード
-    def downloadImage(self, basedir, page):
-        imgurl = self.__imageurl + str(page)
-        filename = basedir + '%04d' % page + '.jpeg'
-        print("Download Image File=" + filename)
+    def downloadImage(self, url, basedir, chapter, page):
+        imgurl = url.replace('raw.senmanga.com', 'raw.senmanga.com/viewer') + '/' + str(page)
+        filename = basedir + chapter + '_' + '%03d' % page + '.jpeg'
 
         for retry in range(0, 10):
             try:
-                print('url:' + imgurl)
                 r = self.__imgreq.get(imgurl, stream=True, timeout=(10.0, 10.0))
-                print('status_code:' + str(r.status_code))
+                print('image file=' + filename, '  url:' + imgurl)
 
-                with open(filename, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=4096):
-                        if chunk:  # filter out keep-alive new chunks
-                            f.write(chunk)
-                            f.flush()
-                    f.close()
+                if r.status_code == 200:
+                    with open(filename, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=4096):
+                            if chunk:  # filter out keep-alive new chunks
+                                f.write(chunk)
+                                f.flush()
+                        f.close()
+                    return
 
-                return filename
+                print('url:' + imgurl, 'status_code:' + str(r.status_code))
 
             except requests.exceptions.ConnectionError:
                 print('ConnectionError:' + imgurl)
-                continue
             except requests.exceptions.Timeout:
                 print('Timeout:' + imgurl)
-                continue
             except requests.exceptions.ReadTimeout:
-                print('Timeout:' + imgurl)
-                continue
+                print('ReadTimeout:' + imgurl)
+
+            # リトライ前に2秒待つ
+            sleep(2)
 
         # リトライ回数をオーバーで終了
         print('Retry over:' + imgurl)
-        sys.exit()
 
 #
 # ファイル名に使用できない、使用しない方がいい文字を削除
@@ -137,5 +205,4 @@ def cleanPath(path):
 if __name__ == '__main__':
     for url in sys.argv[1:]:
         sen = SenManga(url)
-        sen.gethtml()
-        sen.getimage()
+        sen.download()
