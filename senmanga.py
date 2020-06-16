@@ -15,6 +15,8 @@ from http.cookies import SimpleCookie
 from requests.cookies import cookiejar_from_dict
 from time import sleep
 import subprocess
+import threading
+
 
 # ファイルをダウンロードし、zipファイルを作成する作業ディレクトリ
 TMPPATH = 'img/'
@@ -29,6 +31,16 @@ class SenManga:
     def __init__(self, url):
         # urlが最後/で終わる場合、/を取り除く
         self.__url = re.sub(r'/$', '', url)
+        self.threadcount = 0
+        self.Maxthread = 20
+        self.lock = threading.Lock()
+        self.threadready = threading.Event()
+
+    # スレッドの待ち合わせ
+    def Wait_for_threads(self):
+        while self.threadcount:
+            self.threadready.wait()
+            self.threadready.clear()
 
     # ダウンロード
     def download(self):
@@ -61,17 +73,27 @@ class SenManga:
                     chapter = list.group(2)
 
             basedir = TMPPATH + title + '/' + chapter
+
+            pagesize = self.getpagesize(url)
+            if pagesize is None:
+                continue
+
             try:
                 EXT = '.download'
                 os.makedirs(basedir)
                 if os.path.isdir(basedir + EXT):
                     shutil.rmtree(basedir + EXT)
                 os.rename(basedir, basedir + EXT)
-                self.gethtml(url, basedir + EXT + '/', chapter)
+
+                # イメージダウンロード実行
+                self.getimage(url, basedir + EXT + '/', chapter, pagesize)
+                self.Wait_for_threads()
+
                 os.rename(basedir + EXT, basedir)
             except FileExistsError:
                 # すでに存在すれば、処理を行わない。
                 print('すでに存在:', url)
+
         return
 
     def getURLlist(self, url):
@@ -84,20 +106,32 @@ class SenManga:
             'Referer': url,
         }
 
-        # HTML情報取得
-        response = req.get(url)
-        print('url:' + url, 'status_code:' + str(response.status_code))
+        for retry in range(0, 10):
+            try:
+                # HTML情報取得
+                response = req.get(url)
+                print('url:' + url, 'status_code:' + str(response.status_code))
 
-        # 取得HTMLパース
-        html = lxml.etree.HTML(response.text)
+                if response.status_code == 200:
+                    # 取得HTMLパース
+                    html = lxml.etree.HTML(response.text)
 
-        # //*[@id="content"]/div[3]/div[2]/div[2]/div[1]/a
-        list = html.xpath('//*[@id="content"]/div[3]/div[@class="group"]/div[@class="element"]/div[@class="title"]/a/@href')
+                    # //*[@id="content"]/div[3]/div[2]/div[2]/div[1]/a
+                    list = html.xpath('//*[@id="content"]/div[3]/div[@class="group"]/div[@class="element"]/div[@class="title"]/a/@href')
+                    return list
 
-        return list
+            except requests.exceptions.ConnectionError:
+                print('ConnectionError:' + url)
+            except requests.exceptions.Timeout:
+                print('Timeout:' + url)
+
+            # リトライ前に2秒待つ
+            sleep(2)
+
+        return None
 
     # 接続、クッキー・ページリストを取得
-    def gethtml(self, url, basedir, chapter):
+    def getpagesize(self, url):
         req = requests.session()
         req.headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36',
@@ -122,9 +156,7 @@ class SenManga:
                     pagelist = index.xpath('//div[1]/div[3]/span/select[@name="page"]/option')
 
                     # イメージダウンロード実行
-                    self.getimage(url, basedir, chapter, len(pagelist))
-
-                    return
+                    return len(pagelist)
 
                 print('url:' + url + '/1', 'status_code:' + str(response.status_code))
 
@@ -135,6 +167,8 @@ class SenManga:
 
             # リトライ前に2秒待つ
             sleep(2)
+
+        return None
 
     #
     def getimage(self, url, basedir, chapter, pagesize):
@@ -149,12 +183,22 @@ class SenManga:
         }
 
         for page in range(1, pagesize + 1):
-            self.downloadImage(url, basedir, chapter, page)
+            if self.threadcount == self.Maxthread:
+                self.threadready.wait()
+
+            thread = threading.Thread(target=self.downloadImage, args=(url, basedir, chapter, page))
+            thread.start()
+            self.threadready.clear()
+            # self.downloadImage(url, basedir, chapter, page)
 
     # イメージファイルのダウンロード
     def downloadImage(self, url, basedir, chapter, page):
         imgurl = url.replace('raw.senmanga.com', 'raw.senmanga.com/viewer') + '/' + str(page)
         filename = basedir + chapter + '_' + '%03d' % page + '.jpeg'
+
+        self.lock.acquire()
+        self.threadcount += 1
+        self.lock.release()
 
         for retry in range(0, 10):
             try:
@@ -168,6 +212,11 @@ class SenManga:
                                 f.write(chunk)
                                 f.flush()
                         f.close()
+
+                    self.lock.acquire()
+                    self.threadcount -= 1
+                    self.lock.release()
+                    self.threadready.set()
                     return
 
                 print('url:' + imgurl, 'status_code:' + str(r.status_code))
@@ -184,6 +233,12 @@ class SenManga:
 
         # リトライ回数をオーバーで終了
         print('Retry over:' + imgurl)
+
+        self.lock.acquire()
+        self.threadcount -= 1
+        self.lock.release()
+        self.threadready.set()
+        return
 
 #
 # ファイル名に使用できない、使用しない方がいい文字を削除
