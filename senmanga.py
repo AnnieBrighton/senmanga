@@ -18,8 +18,9 @@ import subprocess
 import threading
 
 
-# ファイルをダウンロードし、zipファイルを作成する作業ディレクトリ
+# zipファイルを作成する作業ディレクトリ
 TMPPATH = 'img/'
+EXT = '/tmp/'
 
 #
 # senmangaクラス
@@ -32,7 +33,7 @@ class SenManga:
         # urlが最後/で終わる場合、/を取り除く
         self.__url = re.sub(r'/$', '', url)
         self.threadcount = 0
-        self.Maxthread = 20
+        self.Maxthread = 10
         self.lock = threading.Lock()
         self.threadready = threading.Event()
 
@@ -74,25 +75,38 @@ class SenManga:
 
             basedir = TMPPATH + title + '/' + chapter
 
+            if os.path.isfile(basedir + '.zip'):
+                print('すでに存在:', url)
+                continue
+
             pagesize = self.getpagesize(url)
             if pagesize is None:
+                print('pagesizeの取得に失敗しました', url)
                 continue
 
             try:
-                EXT = '.download'
-                os.makedirs(basedir)
-                if os.path.isdir(basedir + EXT):
-                    shutil.rmtree(basedir + EXT)
-                os.rename(basedir, basedir + EXT)
-
-                # イメージダウンロード実行
-                self.getimage(url, basedir + EXT + '/', chapter, pagesize)
-                self.Wait_for_threads()
-
-                os.rename(basedir + EXT, basedir)
+                os.makedirs(TMPPATH + title)
             except FileExistsError:
-                # すでに存在すれば、処理を行わない。
-                print('すでに存在:', url)
+                pass
+
+            try:
+                os.makedirs(EXT + basedir)
+            except FileExistsError:
+                shutil.rmtree(EXT + basedir)
+                os.makedirs(EXT + basedir)
+
+            # イメージダウンロード実行
+            self.getimage(url, EXT + basedir + '/', chapter, pagesize)
+            self.Wait_for_threads()
+
+            # ダウンロードしたイメージをzipファイルにまとめる
+            with zipfile.ZipFile(basedir + '.zip', 'w', compression=zipfile.ZIP_STORED) as new_zip:
+                for x in sorted(os.listdir(EXT + basedir)):
+                    if (re.match(r'.*\.(jpg|jpeg|png|JPG|JPEG|PNG)', x) and
+                            os.path.isfile(EXT + basedir + '/' + x)):
+                        new_zip.write(EXT + basedir + '/' + x, arcname=x)
+
+            shutil.rmtree(EXT + basedir)
 
         return
 
@@ -203,7 +217,6 @@ class SenManga:
         for retry in range(0, 10):
             try:
                 r = self.__imgreq.get(imgurl, stream=True, timeout=(10.0, 10.0))
-                print('image file=' + filename, '  url:' + imgurl)
 
                 if r.status_code == 200:
                     with open(filename, 'wb') as f:
@@ -217,6 +230,8 @@ class SenManga:
                     self.threadcount -= 1
                     self.lock.release()
                     self.threadready.set()
+
+                    print('image file=' + filename, '  url:' + imgurl)
                     return
 
                 print('url:' + imgurl, 'status_code:' + str(r.status_code))
@@ -231,13 +246,13 @@ class SenManga:
             # リトライ前に2秒待つ
             sleep(2)
 
-        # リトライ回数をオーバーで終了
-        print('Retry over:' + imgurl)
-
         self.lock.acquire()
         self.threadcount -= 1
         self.lock.release()
         self.threadready.set()
+
+        # リトライ回数をオーバーで終了
+        print('Retry over:' + imgurl)
         return
 
 #
