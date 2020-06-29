@@ -29,13 +29,17 @@ EXT = '/tmp/'
 
 class SenManga:
     # コンストラクタ
-    def __init__(self, url):
+    def __init__(self, url, path):
         # urlが最後/で終わる場合、/を取り除く
         self.__url = re.sub(r'/$', '', url)
         self.threadcount = 0
         self.Maxthread = 10
         self.lock = threading.Lock()
         self.threadready = threading.Event()
+        if path is not None:
+            self.path = path
+        else:
+            self.path = re.search(r'https*://[^/]+/([^/]+)', url).group(1)
 
     # スレッドの待ち合わせ
     def Wait_for_threads(self):
@@ -64,7 +68,6 @@ class SenManga:
         for url in urls:
             # ファイルを展開するパスを作成 (最後に / を含む)
             list = re.search(r'https*://[^/]+/([^/]+)/([^/]+)', url)
-            title = list.group(1)
             try:
                 chapter = '%04d' % int(list.group(2))
             except ValueError:
@@ -73,7 +76,7 @@ class SenManga:
                 except ValueError:
                     chapter = list.group(2)
 
-            basedir = TMPPATH + title + '/' + chapter
+            basedir = TMPPATH + self.path + '/' + chapter
 
             if os.path.isfile(basedir + '.zip'):
                 print('すでに存在:', url)
@@ -85,7 +88,7 @@ class SenManga:
                 continue
 
             try:
-                os.makedirs(TMPPATH + title)
+                os.makedirs(TMPPATH + self.path)
             except FileExistsError:
                 pass
 
@@ -273,6 +276,10 @@ def cleanPath(path):
 
 
 if __name__ == '__main__':
-    for url in sys.argv[1:]:
-        sen = SenManga(url)
-        sen.download()
+    url = sys.argv[1]
+    path = None
+    if len(sys.argv) > 1:
+        path = sys.argv[2]
+
+    sen = SenManga(url, path)
+    sen.download()
