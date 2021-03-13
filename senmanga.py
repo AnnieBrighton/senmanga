@@ -63,7 +63,7 @@ class SenManga:
                 # ダウンロードできるURLでないため終了
                 return
 
-        print(urls)
+        # print(urls)
 
         for url in urls:
             # ファイルを展開するパスを作成 (最後に / を含む)
@@ -79,7 +79,7 @@ class SenManga:
             basedir = TMPPATH + self.path + '/' + chapter
 
             if os.path.isfile(basedir + '.zip'):
-                print('すでに存在:', url)
+                #print('すでに存在:', url)
                 continue
 
             pagesize = self.getpagesize(url)
@@ -127,14 +127,15 @@ class SenManga:
             try:
                 # HTML情報取得
                 response = req.get(url)
-                print('url:' + url, 'status_code:' + str(response.status_code))
+                #print('url:' + url, 'status_code:' + str(response.status_code))
 
                 if response.status_code == 200:
                     # 取得HTMLパース
                     html = lxml.etree.HTML(response.text)
 
-                    # //*[@id="content"]/div[3]/div[2]/div[2]/div[1]/a
-                    list = html.xpath('//*[@id="content"]/div[3]/div[@class="group"]/div[@class="element"]/div[@class="title"]/a/@href')
+                    # チャプターリストを取得
+                    # //ul[@class="chapter-list"]/li/a/@href
+                    list = html.xpath('//ul[@class="chapter-list"]/li/a/@href')
                     return list
 
             except requests.exceptions.ConnectionError:
@@ -169,11 +170,15 @@ class SenManga:
                     index = lxml.etree.HTML(response.text)
 
                     # イメージページ数取得
-                    # /html/body/article/div[1]/div[3]/span/select
-                    pagelist = index.xpath('//div[1]/div[3]/span/select[@name="page"]/option')
+                    # /html/body/div[3]/div[3]/span/select/option[1]
+                    pagelist = index.xpath('//span[@class="page-list"]/select[@name="page"]/option')
 
-                    # イメージダウンロード実行
-                    return len(pagelist)
+                    # イメージページ数箇所取得
+                    # /html/body/div[3]/div[3]/span/select
+                    pagelists = index.xpath('//span[@class="page-list"]/select[@name="page"]')
+
+                    # イメージページ数を返す
+                    return int(len(pagelist)/len(pagelists))
 
                 print('url:' + url + '/1', 'status_code:' + str(response.status_code))
 
