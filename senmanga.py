@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-import requests
 import lxml.etree
 import sys
 import codecs
@@ -12,10 +11,10 @@ import zipfile
 import getopt
 import shutil
 from http.cookies import SimpleCookie
-from requests.cookies import cookiejar_from_dict
+from requests import session, exceptions
+from threading import Thread, Lock, Event
 from time import sleep
 import subprocess
-import threading
 
 
 # zipファイルを作成する作業ディレクトリ
@@ -29,13 +28,13 @@ EXT = '/tmp/'
 
 class SenManga:
     # コンストラクタ
-    def __init__(self, url, path):
+    def __init__(self, url, path, max):
         # urlが最後/で終わる場合、/を取り除く
         self.__url = re.sub(r'/$', '', url)
         self.threadcount = 0
-        self.Maxthread = 10
-        self.lock = threading.Lock()
-        self.threadready = threading.Event()
+        self.Maxthread = max
+        self.lock = Lock()
+        self.threadready = Event()
         if path is not None:
             self.path = path
         else:
@@ -114,7 +113,7 @@ class SenManga:
         return
 
     def getURLlist(self, url):
-        req = requests.session()
+        req = session()
         req.headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml',
@@ -138,9 +137,9 @@ class SenManga:
                     list = html.xpath('//ul[@class="chapter-list"]/li/a/@href')
                     return list
 
-            except requests.exceptions.ConnectionError:
+            except exceptions.ConnectionError:
                 print('ConnectionError:' + url)
-            except requests.exceptions.Timeout:
+            except exceptions.Timeout:
                 print('Timeout:' + url)
 
             # リトライ前に2秒待つ
@@ -150,7 +149,7 @@ class SenManga:
 
     # 接続、クッキー・ページリストを取得
     def getpagesize(self, url):
-        req = requests.session()
+        req = session()
         req.headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml',
@@ -182,9 +181,9 @@ class SenManga:
 
                 print('url:' + url + '/1', 'status_code:' + str(response.status_code))
 
-            except requests.exceptions.ConnectionError:
+            except exceptions.ConnectionError:
                 print('ConnectionError:' + url)
-            except requests.exceptions.Timeout:
+            except exceptions.Timeout:
                 print('Timeout:' + url)
 
             # リトライ前に2秒待つ
@@ -194,7 +193,7 @@ class SenManga:
 
     #
     def getimage(self, url, basedir, chapter, pagesize):
-        self.__imgreq = requests.session()
+        self.__imgreq = session()
         self.__imgreq.headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
@@ -208,7 +207,7 @@ class SenManga:
             if self.threadcount == self.Maxthread:
                 self.threadready.wait()
 
-            thread = threading.Thread(target=self.downloadImage, args=(url, basedir, chapter, page))
+            thread = Thread(target=self.downloadImage, args=(url, basedir, chapter, page))
             thread.start()
             self.threadready.clear()
             # self.downloadImage(url, basedir, chapter, page)
@@ -244,11 +243,11 @@ class SenManga:
 
                 print('url:' + imgurl, 'status_code:' + str(r.status_code))
 
-            except requests.exceptions.ConnectionError:
+            except exceptions.ConnectionError:
                 print('ConnectionError:' + imgurl)
-            except requests.exceptions.Timeout:
+            except exceptions.Timeout:
                 print('Timeout:' + imgurl)
-            except requests.exceptions.ReadTimeout:
+            except exceptions.ReadTimeout:
                 print('ReadTimeout:' + imgurl)
 
             # リトライ前に2秒待つ
@@ -286,5 +285,6 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         path = sys.argv[2]
 
-    sen = SenManga(url, path)
+    print(url, path)
+    sen = SenManga(url, path, 3)
     sen.download()

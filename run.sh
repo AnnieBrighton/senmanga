@@ -3,12 +3,10 @@
 OLDIFS=$IFS
 IFS=$'\t\n'
 
-for i in $(cd img ; ls -d */ ) ; do
-  for ul in $(cd "img/${i}" ; ls *.url 2>/dev/null) ; do
-    echo "$i"
+for i in $(cd img ; ls -1d */ ) ; do
+  for ul in $(cd "img/${i}" ; ls -1 *.url 2>/dev/null) ; do
     URL="${ul/.url}"
-    ./senmanga.py "https://raw.senmanga.com/${URL}" "${i/\//}"
+    echo "\"https://raw.senmanga.com/${URL}\" \"${i/\//}\""
   done
-done
+done | tr "\n" "\0" | IFS=$OLDIFS /usr/bin/xargs -0 -P10 -L1 -I{} bash -c "./senmanga.py {}"
 
-IFS=$OLDIFS
