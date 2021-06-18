@@ -58,6 +58,8 @@ class SenManga:
                 # 「https://raw.senmanga.com/Dragon-Age」の形式ならばそのままリストを取得、各リストに対しダウンロードを実行
                 # 「https://raw.senmanga.com/Dragon-Age/2020-07」の形式のリストを取得
                 urls = self.getURLlist(list[0])
+                if urls is None:
+                    return
             else:
                 # ダウンロードできるURLでないため終了
                 return
@@ -136,6 +138,9 @@ class SenManga:
                     # //ul[@class="chapter-list"]/li/a/@href
                     list = html.xpath('//ul[@class="chapter-list"]/li/a/@href')
                     return list
+                else:
+                    print('Status Error ' + str(response.status_code) + ':' + url)
+                    return None
 
             except exceptions.ConnectionError:
                 print('ConnectionError:' + url)
@@ -242,6 +247,7 @@ class SenManga:
                     return
 
                 print('url:' + imgurl, 'status_code:' + str(r.status_code))
+                return
 
             except exceptions.ConnectionError:
                 print('ConnectionError:' + imgurl)
