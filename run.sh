@@ -8,5 +8,5 @@ for i in $(cd img ; ls -1d */ ) ; do
     URL="${ul/.url}"
     echo "\"https://raw.senmanga.com/${URL}\" \"${i/\//}\""
   done
-done | tr "\n" "\0" | IFS=$OLDIFS /usr/bin/xargs -0 -P10 -L1 -I{} bash -c "./senmanga.py {}"
+done | tr "\n" "\0" | IFS=$OLDIFS /usr/bin/xargs -0 -P20 -L1 -I{} bash -c "./senmanga.py {}"
 
