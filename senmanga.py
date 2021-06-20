@@ -202,7 +202,7 @@ class SenManga:
         self.__imgreq.headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
-            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Encoding': 'gzip',
             'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
             'Authority': 'raw.senmanga.com',
             'Referer': url,
@@ -245,6 +245,23 @@ class SenManga:
 
                     print('image file=' + filename, '  url:' + imgurl)
                     return
+
+                elif r.status_code == 500:
+                    imgurl = url + '/' + str(page)
+                    r = self.__imgreq.get(imgurl, stream=True)
+                    if r.status_code == 200:
+                        # 取得HTMLパース
+                        html = lxml.etree.HTML(r.content)
+                        # /html/body/div[5]/a/img
+                        states = html.xpath('//img[@class="picture"]/@src')
+                        imgurl = states[0]
+
+                        continue
+
+                self.lock.acquire()
+                self.threadcount -= 1
+                self.lock.release()
+                self.threadready.set()
 
                 print('url:' + imgurl, 'status_code:' + str(r.status_code))
                 return
@@ -292,5 +309,5 @@ if __name__ == '__main__':
         path = sys.argv[2]
 
     print(url, path)
-    sen = SenManga(url, path, 3)
+    sen = SenManga(url, path, 4)
     sen.download()
