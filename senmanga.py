@@ -15,7 +15,7 @@ from requests import session, exceptions
 from threading import Thread, Lock, Event
 from time import sleep
 import subprocess
-
+import hashlib
 
 # zipファイルを作成する作業ディレクトリ
 TMPPATH = 'img/'
@@ -230,23 +230,31 @@ class SenManga:
             try:
                 r = self.__imgreq.get(imgurl, stream=True, timeout=(10.0, 10.0))
 
+                # ハッシュオブジェクトを作ります
+                h = hashlib.new('md5')
+                hash = ''
+
                 if r.status_code == 200:
                     with open(filename, 'wb') as f:
                         for chunk in r.iter_content(chunk_size=4096):
                             if chunk:  # filter out keep-alive new chunks
+                                h.update(chunk)
                                 f.write(chunk)
                                 f.flush()
                         f.close()
 
-                    self.lock.acquire()
-                    self.threadcount -= 1
-                    self.lock.release()
-                    self.threadready.set()
+                    hash = h.hexdigest()
 
-                    print('image file=' + filename, '  url:' + imgurl)
-                    return
+                    if (hash != '2f0f6c4f7efbee0a720ece0e906c7fda'):
+                        self.lock.acquire()
+                        self.threadcount -= 1
+                        self.lock.release()
+                        self.threadready.set()
 
-                elif r.status_code == 500:
+                        print('image file=' + filename, '  url:' + imgurl)
+                        return
+
+                if r.status_code == 500 or hash == '2f0f6c4f7efbee0a720ece0e906c7fda':
                     imgurl = url + '/' + str(page)
                     r = self.__imgreq.get(imgurl, stream=True)
                     if r.status_code == 200:
@@ -254,7 +262,7 @@ class SenManga:
                         html = lxml.etree.HTML(r.content)
                         # /html/body/div[5]/a/img
                         states = html.xpath('//img[@class="picture"]/@src')
-                        imgurl = states[0]
+                        imgurl = ''.join(states[0].splitlines())
 
                         continue
 
