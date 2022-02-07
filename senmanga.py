@@ -264,6 +264,12 @@ class SenManga:
                         states = html.xpath('//img[@class="picture"]/@src')
                         imgurl = ''.join(states[0].splitlines())
 
+                        # イメージファイル名が「/1-61ffbc68eddac.jpg」のような形式の時、1をページ番号として処理する
+                        num = re.match(r'^.*/(\d+)-[^/]*$', imgurl)
+                        if num:
+                            page = int(num.group(1))
+                            filename = basedir + chapter + '_' + '%03d' % page + '.jpeg'
+
                         continue
 
                 self.lock.acquire()
@@ -311,11 +317,10 @@ def cleanPath(path):
 
 
 if __name__ == '__main__':
-    url = sys.argv[1]
-    path = None
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 2:
+        url = sys.argv[1]
         path = sys.argv[2]
 
-    print(url, path)
-    sen = SenManga(url, path, 4)
-    sen.download()
+        print(url, path)
+        sen = SenManga(url, path, 4)
+        sen.download()
