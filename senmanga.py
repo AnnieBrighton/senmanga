@@ -221,6 +221,7 @@ class SenManga:
     def downloadImage(self, url, basedir, chapter, page):
         imgurl = url.replace('raw.senmanga.com', 'raw.senmanga.com/viewer') + '/' + str(page)
         filename = basedir + chapter + '_' + '%03d' % page + '.jpeg'
+        wk_filename = basedir + chapter + '_' + '%03d' % page + '.work'
 
         self.lock.acquire()
         self.threadcount += 1
@@ -235,7 +236,7 @@ class SenManga:
                 hash = ''
 
                 if r.status_code == 200:
-                    with open(filename, 'wb') as f:
+                    with open(wk_filename, 'wb') as f:
                         for chunk in r.iter_content(chunk_size=4096):
                             if chunk:  # filter out keep-alive new chunks
                                 h.update(chunk)
@@ -245,12 +246,14 @@ class SenManga:
 
                     hash = h.hexdigest()
 
+                    # 2f0f6c4f7efbee0a720ece0e906c7fda Sorry, this page is not available
                     if (hash != '2f0f6c4f7efbee0a720ece0e906c7fda'):
                         self.lock.acquire()
                         self.threadcount -= 1
                         self.lock.release()
                         self.threadready.set()
 
+                        os.rename(wk_filename, filename)
                         print('image file=' + filename, '  url:' + imgurl)
                         return
 
@@ -268,7 +271,11 @@ class SenManga:
                         num = re.match(r'^.*/(\d+)-[^/]*$', imgurl)
                         if num:
                             page = int(num.group(1))
-                            filename = basedir + chapter + '_' + '%03d' % page + '.jpeg'
+                            fmt = re.match(r'^.*\.png$', imgurl)
+                            if fmt:
+                                filename = basedir + chapter + '_' + '%03d' % page + '.png'
+                            else:
+                                filename = basedir + chapter + '_' + '%03d' % page + '.jpeg'
 
                         continue
 
