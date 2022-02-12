@@ -14,8 +14,10 @@ from http.cookies import SimpleCookie
 from requests import session, exceptions
 from threading import Thread, Lock, Event
 from time import sleep
+import pathlib
 import subprocess
 import hashlib
+import datetime
 
 # zipファイルを作成する作業ディレクトリ
 TMPPATH = 'img/'
@@ -81,11 +83,22 @@ class SenManga:
 
             if os.path.isfile(basedir + '.zip'):
                 #print('すでに存在:', url)
-                continue
+                stat = os.stat(basedir + '.zip')
+                if stat.st_size == 0 and time.time() - stat.st_mtime > 7 * 24 * 3600:
+                    # ファイルサイズが0、かつ、最終更新日が7日より過去
+                    print(basedir + '.zip is size zero and older than 7days')
+                else:
+                    continue
 
-            pagesize = self.getpagesize(url)
+            pagesize, status = self.getpagesize(url)
             if pagesize is None:
                 print('pagesizeの取得に失敗しました', url)
+
+                # HTTPステータスが200以外で返ってきた場合、空ファイルを作成、または、最終更新日を更新する
+                if status is not None:
+                    with open(basedir + '.zip', 'wb') as f:
+                        pass
+                    
                 continue
 
             try:
@@ -93,6 +106,7 @@ class SenManga:
             except FileExistsError:
                 pass
 
+            # 作業ディレクトリの作成
             try:
                 os.makedirs(EXT + basedir)
             except FileExistsError:
@@ -103,12 +117,23 @@ class SenManga:
             self.getimage(url, EXT + basedir + '/', chapter, pagesize)
             self.Wait_for_threads()
 
-            # ダウンロードしたイメージをzipファイルにまとめる
-            with zipfile.ZipFile(basedir + '.zip', 'w', compression=zipfile.ZIP_STORED) as new_zip:
-                for x in sorted(os.listdir(EXT + basedir)):
-                    if (re.match(r'.*\.(jpg|jpeg|png|JPG|JPEG|PNG)', x) and
-                            os.path.isfile(EXT + basedir + '/' + x)):
-                        new_zip.write(EXT + basedir + '/' + x, arcname=x)
+            # zipファイルの作成
+            count = 0
+            for x in os.listdir(EXT + basedir):
+                if (re.match(r'.*\.(jpg|jpeg|png|JPG|JPEG|PNG)', x) and os.path.isfile(os.path.join(EXT + basedir, x))):
+                    count = count + 1
+
+            if count == 0:
+                # イメージファイルが存在しない場合、0byteのファイルを作成する
+                with open(basedir + '.zip', 'wb') as f:
+                    pass
+            else:
+                # ダウンロードしたイメージをzipファイルにまとめる
+                with zipfile.ZipFile(basedir + '.zip', 'w', compression=zipfile.ZIP_STORED) as new_zip:
+                    for x in sorted(os.listdir(EXT + basedir)):
+                        if (re.match(r'.*\.(jpg|jpeg|png|JPG|JPEG|PNG)', x) and
+                                os.path.isfile(os.path.join(EXT + basedir, x))):
+                            new_zip.write(os.path.join(EXT + basedir, x), arcname=x)
 
             shutil.rmtree(EXT + basedir)
 
@@ -182,9 +207,10 @@ class SenManga:
                     pagelists = index.xpath('//span[@class="page-list"]/select[@name="page"]')
 
                     # イメージページ数を返す
-                    return int(len(pagelist)/len(pagelists))
+                    return int(len(pagelist)/len(pagelists)), None
 
                 print('url:' + url + '/1', 'status_code:' + str(response.status_code))
+                return None, str(response.status_code)
 
             except exceptions.ConnectionError:
                 print('ConnectionError:' + url)
@@ -194,7 +220,7 @@ class SenManga:
             # リトライ前に2秒待つ
             sleep(2)
 
-        return None
+        return None, None
 
     #
     def getimage(self, url, basedir, chapter, pagesize):
@@ -289,10 +315,10 @@ class SenManga:
 
             except exceptions.ConnectionError:
                 print('ConnectionError:' + imgurl)
-            except exceptions.Timeout:
-                print('Timeout:' + imgurl)
             except exceptions.ReadTimeout:
                 print('ReadTimeout:' + imgurl)
+            except exceptions.Timeout:
+                print('Timeout:' + imgurl)
 
             # リトライ前に2秒待つ
             sleep(2)
