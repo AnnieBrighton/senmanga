@@ -138,7 +138,7 @@ class SenManga:
         # タグ情報の空ファイルを作成する。すでに存在する場合はスキップ
         for tag in tags:
             tag_file = self.path + '/' + tag + '.info'
-            if not os.path.isfile(tag_file):
+            if tag != 'N/A' and not os.path.isfile(tag_file):
                 with open(tag_file, 'wb') as f:
                     pass                
 
