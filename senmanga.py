@@ -47,6 +47,8 @@ class SenManga:
     # ダウンロード
     def download(self):
         list = re.search(r'https*://[^/]+/([^/]+)/([^/]+)', self.__url)
+        tags = []
+
         if list is not None:
             # 「https://raw.senmanga.com/Dragon-Age/2020-07」の形式ならばそのままイメージ取得
             urls = [list[0]]
@@ -55,7 +57,7 @@ class SenManga:
             if list is not None:
                 # 「https://raw.senmanga.com/Dragon-Age」の形式ならばそのままリストを取得、各リストに対しダウンロードを実行
                 # 「https://raw.senmanga.com/Dragon-Age/2020-07」の形式のリストを取得
-                urls = self.getURLlist(list[0])
+                urls, tags = self.getURLlist(list[0])
                 if urls is None:
                     return
             else:
@@ -133,6 +135,13 @@ class SenManga:
 
             shutil.rmtree(EXT + basedir)
 
+        # タグ情報の空ファイルを作成する。すでに存在する場合はスキップ
+        for tag in tags:
+            tag_file = self.path + '/' + tag + '.info'
+            if not os.path.isfile(tag_file):
+                with open(tag_file, 'wb') as f:
+                    pass                
+
         return
 
     def getURLlist(self, url):
@@ -158,10 +167,20 @@ class SenManga:
                     # チャプターリストを取得
                     # //ul[@class="chapter-list"]/li/a/@href
                     list = html.xpath('//ul[@class="chapter-list"]/li/a/@href')
-                    return list
+
+                    # Genres:情報を取得
+                    # /html/body/div[3]/div/div[1]/div[1]/div[2]/div[2]/div[3]/div[1]/strong
+                    # /html/body/div[3]/div/div[1]/div[1]/div[2]/div[2]/div[@class="info"]/div[1]/a/text()
+                    item = html.xpath('/html/body/div[3]/div/div[1]/div[1]/div[2]/div[2]/div[@class="info"]/div[1]/strong/text()')
+                    if len(item) > 0 and item[0] == 'Genres:':
+                        tags = html.xpath('/html/body/div[3]/div/div[1]/div[1]/div[2]/div[2]/div[@class="info"]/div[1]/a/text()')
+                    else:
+                        tags = []
+
+                    return list, tags
                 else:
                     print('Status Error ' + str(response.status_code) + ':' + url)
-                    return None
+                    return None, None
 
             except exceptions.ConnectionError:
                 print('ConnectionError:' + url)
@@ -171,7 +190,7 @@ class SenManga:
             # リトライ前に2秒待つ
             sleep(2)
 
-        return None
+        return None, None
 
     # 接続、クッキー・ページリストを取得
     def getpagesize(self, url):
