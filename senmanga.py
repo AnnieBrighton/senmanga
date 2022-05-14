@@ -319,6 +319,9 @@ class SenManga:
                 print('ReadTimeout:' + imgurl)
             except exceptions.Timeout:
                 print('Timeout:' + imgurl)
+            except Exception as e:
+                print(e)
+                break
 
             # リトライ前に2秒待つ
             sleep(2)
