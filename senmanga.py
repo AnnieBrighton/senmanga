@@ -20,7 +20,6 @@ import hashlib
 import datetime
 
 # zipファイルを作成する作業ディレクトリ
-TMPPATH = 'img/'
 EXT = '/tmp/'
 
 #
@@ -37,10 +36,7 @@ class SenManga:
         self.Maxthread = max
         self.lock = Lock()
         self.threadready = Event()
-        if path is not None:
-            self.path = path
-        else:
-            self.path = re.search(r'https*://[^/]+/([^/]+)', url).group(1)
+        self.path = path
 
     # スレッドの待ち合わせ
     def Wait_for_threads(self):
@@ -79,7 +75,7 @@ class SenManga:
                 except ValueError:
                     chapter = list.group(2)
 
-            basedir = TMPPATH + self.path + '/' + chapter
+            basedir = self.path + '/' + chapter
 
             if os.path.isfile(basedir + '.zip'):
                 #print('すでに存在:', url)
@@ -102,7 +98,7 @@ class SenManga:
                 continue
 
             try:
-                os.makedirs(TMPPATH + self.path)
+                os.makedirs(self.path)
             except FileExistsError:
                 pass
 
