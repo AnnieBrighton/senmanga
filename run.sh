@@ -11,5 +11,5 @@ for i in $(cd img ; ls -1d */ ) ; do
   done
 done | IFS=${OLDIFS} /usr/bin/xargs -P20 -L1 -I{} -S4096 bash -c './senmanga.py {}'
 date
-sleep $(( 3600 * 6 ))
+sleep $(( 3600 * 4 ))
 done
