@@ -18,6 +18,7 @@ import pathlib
 import subprocess
 import hashlib
 import datetime
+import traceback
 
 # zipファイルを作成する作業ディレクトリ
 EXT = '/tmp/'
@@ -169,13 +170,18 @@ class SenManga:
                     list = html.xpath('//ul[@class="chapter-list"]/li/a/@href')
 
                     # Genres:情報を取得
-                    # /html/body/div[3]/div/div[1]/div[1]/div[2]/div[2]/div[3]/div[1]/strong
-                    # /html/body/div[3]/div/div[1]/div[1]/div[2]/div[2]/div[@class="info"]/div[1]/a/text()
-                    item = html.xpath('/html/body/div[3]/div/div[1]/div[1]/div[2]/div[2]/div[@class="info"]/div[1]/strong/text()')
-                    if len(item) > 0 and item[0] == 'Genres:':
-                        tags = html.xpath('/html/body/div[3]/div/div[1]/div[1]/div[2]/div[2]/div[@class="info"]/div[1]/a/text()')
-                    else:
-                        tags = []
+                    # /html/body/div[3]/div/div[1]/div[1]/div[2]/div[2]/div[3]/div/strong
+                    tags = []
+                    items = html.xpath('//div[@class="series-desc"]/div[@class="desc"]/div[@class="info"]/div')
+                    for item in items:
+                        strongs = item.xpath('./strong/text()')
+                        if strongs == ['Genres:']:
+                                tags = item.xpath('./a/text()')
+                        elif strongs == ['Status:']:
+                                status = item.xpath('./text()')
+                                if status == [' Completed']:
+                                    with open('senmanga-status.txt', 'a') as f:
+                                        f.write('status: ' + url + '\tCompleted\n')
 
                     return list, tags
                 else:
@@ -336,6 +342,7 @@ class SenManga:
                 print('Timeout:' + imgurl)
             except Exception as e:
                 print(e)
+                print(traceback.format_exc())
                 break
 
             # リトライ前に2秒待つ

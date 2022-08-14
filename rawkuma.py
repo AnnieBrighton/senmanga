@@ -11,6 +11,7 @@ import shutil
 from requests import session, exceptions
 from threading import Thread, Lock, Event
 from time import sleep
+import traceback
 
 # zipファイルを作成する作業ディレクトリ
 EXT = '/tmp/'
@@ -81,6 +82,7 @@ class RawKuma:
                 print('Timeout:' + imgurl)
             except Exception as e:
                 print(e)
+                print(traceback.format_exc())
                 break
 
             # リトライ前に2秒待つ
@@ -146,6 +148,7 @@ class RawKuma:
                 print('Timeout:' + url)
             except Exception as e:
                 print(e)
+                print(traceback.format_exc())
                 return None
 
             # リトライ前に2秒待つ
@@ -185,6 +188,15 @@ class RawKuma:
                     # //*div[@id="content"]/div/div[@class="postbody"]/article/div[2]/div[1]/div[2]/div[@class="wd-full"]/span/a
                     tags = html.xpath('//*[@class="infox"]/div[@class="wd-full"]/span[@class="mgen"]/a/text()')
 
+                    # Status:情報取得
+                    # //*[@id="post-95777"]/div[2]/div[1]/div[1]/div[2]/div[4]/div[1]
+                    # //*div[@class="thumbook"]/div[@class="rt"]/div[@class="tsinfo"]/div[@class="imptdt"]/div[1]
+                    status = html.xpath('//div[@class="thumbook"]/div[@class="rt"]/div[@class="tsinfo"]/div[1]/text()')
+                    text = html.xpath('//div[@class="thumbook"]/div[@class="rt"]/div[@class="tsinfo"]/div[1]/i/text()')
+                    if status == [' Status '] and text == ['Completed']:
+                        with open('rawkuma-status.txt', 'a') as f:
+                            f.write('status: ' + url + '\tCompleted\n')                        
+
                     return lists, tags
                 else:
                     print('Status Error ' + str(response.status_code) + ':' + url)
@@ -196,6 +208,7 @@ class RawKuma:
                 print('Timeout:' + url)
             except Exception as e:
                 print(e)
+                print(traceback.format_exc())
                 return None, None
 
             # リトライ前に2秒待つ
